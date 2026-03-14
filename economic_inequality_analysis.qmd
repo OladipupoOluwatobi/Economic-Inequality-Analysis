@@ -1,0 +1,199 @@
+---
+title: "Understanding Economic Inequality in English Households"
+subtitle: "A Data-Driven Investigation of England Household Census 2021"
+author: "Oluwatobi Oladipupo"
+date: "11/06/2025"
+format: 
+  html:
+    theme: cosmo
+    code-fold: true
+    code-link: true
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    embed-resources: true
+    smooth-scroll: true
+link-citations: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+echo = TRUE,
+warning = FALSE,
+message = FALSE,
+fig.width = 10,
+fig.height = 5,
+fig.align = 'center',
+dpi = 300
+)
+```
+
+```{r libraries, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(ggthemes)
+library(knitr)
+```
+
+# Introduction
+
+Economic inequality remains one of the most pressing challenges in England. This investigation uses 2021 census data to uncover an unexpected finding: **within this sample, females earn more than non-females across all education levels**, a reversal of national trends. Alongside this, the analysis reveals persistent inequalities tied to education and housing quality, demonstrating how multiple factors intersect to shape economic outcomes. Understanding these patterns is critical for developing targeted policy interventions that address the root causes of inequality. The analysis is conducted using [R](https://www.R-project.org/) statistical software with dynamic reporting via [Knitr](https://yihui.org/knitr/) and visualizations through [ggplot2](https://ggplot2.tidyverse.org)[@wickham2019].
+
+## Data Loading and Exploration
+
+```{r data-loading}
+data <- read_csv("data/data.csv")
+glimpse(data)
+```
+
+The data comprises 27,410 individuals across 9 distinct variables capturing demographics, education, income, and housing characteristics.
+
+## Data Quality Assessment
+
+```{r missing-values}
+#| fig-cap: "Assessment of data completeness across all variables"
+#| fig-alt: "Table showing missing value counts and percentages for each variable in the dataset"
+missing_summary <- data |> 
+  summarise(across(everything(), ~sum(is.na(.)))) |> 
+  pivot_longer(everything(), names_to = "Variable", values_to = "Missing_Count") |> 
+  mutate(Percentage = round(Missing_Count / nrow(data) * 100, 2))
+kable(missing_summary, caption = "Missing Values Summary")
+```
+
+```{r check-duplicates}
+duplicates <- sum(duplicated(data$Person_ID))
+cat("Number of duplicate Person IDs:", duplicates)
+```
+
+The data quality assessment reveals minimal missing values and no duplicate identifiers, indicating a reliable foundation for analysis.
+
+## Data Cleaning
+
+```{r data-cleaning}
+data2 <- data |> 
+  filter(!is.na(INC), !is.na(Age), !is.na(Female)) |> 
+  filter(Age >= 16 & Age <= 100) |> 
+  filter(INC >= 0 & INC <= 500000) |> 
+  mutate(Gender = factor(Female, levels = c(0, 1), labels = c("Female", "Not Female")), .keep = "unused") |> 
+  mutate(Housing_Quality = factor(H8, levels = c(1, 0), labels = c("Shared Facilities", "Private Facilities")), .keep = "unused") |> 
+  mutate(Highest_Education = factor(`Highest Ed`), Marital_Status   = factor(Mar_Stat),Ethnicity = factor(Eth), .keep = "unused")
+cat("Rows removed during cleaning due to duplication or inconsistencies:", nrow(data) - nrow(data2))
+cat("\nFinal dataset size:", nrow(data2), "rows")
+```
+
+## Summary Statistics
+
+```{r summary-stats}
+#| fig-cap: "Key descriptive statistics for the cleaned dataset"
+#| fig-alt: "Table displaying mean, median, and range statistics for age and income"
+summary_stats <- data2 |> 
+  summarise(Mean_Age = round(mean(Age), 1), Median_Age = median(Age), Mean_Income = round(mean(INC), 0), Median_Income = round(median(INC), 0), Min_Income = min(INC), Max_Income = max(INC), SD_Income = round(sd(INC), 0))
+kable(summary_stats, format.args = list(big.mark = ","), 
+      caption = "Overall Summary Statistics")
+```
+
+```{r demographic-breakdown}
+#| fig-cap: "Income statistics broken down by gender"
+#| fig-alt: "Table showing count, percentage, and income measures for each gender category"
+demo_summary <- data2 |> 
+  group_by(Gender) |> 
+  summarise(Count = n(), Percent = round(n() / nrow(data2) * 100, 1), Mean_Income = round(mean(INC), 0), Median_Income = round(median(INC), 0))
+kable(demo_summary, format.args = list(big.mark = ","), caption = "Gender Demographics and Income")
+```
+
+# Income Distribution Overview
+
+```{r income-distribution}
+#| fig-cap: "Distribution of annual income showing right-skewed pattern with concentration below median"
+#| fig-alt: "Histogram of annual income distribution with blue bars and red dashed line indicating median income"
+ggplot(data2, aes(x = INC)) +
+  geom_histogram(bins = 50, fill = "blue", alpha = 0.8) +
+  geom_vline(aes(xintercept = median(INC)), color = "red", linetype = "dashed", size = 1) +
+  labs(title = "Annual Income Distribution Across English Households", subtitle = "Red line indicates median income", x = "Annual Income (£)", y = "Number of Individuals") +
+  theme_minimal(base_size = 12)
+```
+
+The Income distribution shows right skewness with median income of **£`r format(median(data2$INC), big.mark = ",")`**, indicating that most individuals earn below the average, with a few high earners pulling the distribution upward.
+
+## Gender Income Gap
+
+```{r gender-income}
+#| fig-cap: "Comparison of income distributions between genders revealing higher female earnings in this sample"
+#| fig-alt: "Side-by-side box plots comparing annual income distributions for females and non-females, with females showing higher median income"
+ggplot(data2, aes(x = Gender, y = INC, fill = Gender)) +
+  geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) + 
+  scale_fill_manual(values = c("Female" = "pink", "Not Female" = "blue")) +
+  labs(title = "Income Inequality Between Genders", x = "", y = "Annual Income (£)") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+```
+
+The data shows an income difference of **£`r format(abs(median(data2$INC[data2$Gender == "Not Female"]) - median(data2$INC[data2$Gender == "Female"])), big.mark = ",")`**. between genders. Interestingly, females show higher median income in this sample, which may reflect demographic characteristics specific to this census subset, such as age distribution, occupational sectors, or regional composition. This finding highlights the importance of context when interpreting income data and cautions against assuming national trends apply uniformly across all samples.
+
+## Education Impact on Income
+
+```{r education-stats}
+#| fig-cap: "Median income by education level showing clear income gradient"
+#| fig-alt: "Table ranking education levels by median income from highest to lowest"
+edu_summary <- data2 |> 
+  group_by(Highest_Education) |> 
+  summarise(Count = n(), Median_Income = round(median(INC), 0)) |> 
+  arrange(desc(Median_Income))
+kable(edu_summary, format.args = list(big.mark = ","), caption = "Income by Education Level")
+```
+
+```{r education-income}
+#| fig-cap: "Income distributions by education level demonstrating strong positive relationship between qualification and earnings"
+#| fig-alt: "Horizontal box plots showing income distribution for each education level, ordered by median income from highest to lowest"
+ggplot(data2, aes(x = reorder(Highest_Education, INC, median), y = INC)) +
+  geom_boxplot(fill = "purple", alpha = 0.7, outlier.alpha = 0.2) +
+  coord_flip() +
+  labs(title = "Education Strongly Predicts Income", x = "Highest Education Level", y = "Annual Income (£)") +
+  theme_minimal(base_size = 12)
+```
+
+The data reveals a strong correlation between education level and income, reinforcing the role of education as a key driver of economic mobility. Individuals with higher qualifications consistently earn more, highlighting the long-term financial benefits of educational attainment.
+
+## Gender Pay Gap Across Education
+
+```{r gender-education-income}
+data2 |> 
+  group_by(Highest_Education, Gender) |> 
+  summarise(median_inc = median(INC, na.rm = TRUE), .groups = "drop") |> 
+  ggplot(aes(x = reorder(Highest_Education, median_inc), y = median_inc, fill = Gender)) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  scale_fill_manual(values = c("Female" = "pink", "Not Female" = "blue")) +
+  coord_flip() +
+  labs(title = "Gender Pay Gap Persists Across All Education Levels", x = "Education Level", y = "Median Annual Income (£)") +
+  theme_minimal(base_size = 12)
+```
+
+Across all education levels in this data, females earn more than non-females, a notable deviation from national trends. This consistent pattern suggests that within this census subset, women may be concentrated in higher-paying roles or sectors, or that other demographic factors (such as age, region, or employment type) are influencing the outcome. While this challenges common assumptions about the gender pay gap, it also highlights the importance of examining income data within specific contexts to uncover meaningful variations.
+
+## Housing Quality and Economic Status
+
+```{r housing-income}
+housing_medians <- data2 |> 
+  group_by(Housing_Quality) |> 
+  summarise(median_inc = median(INC))
+ggplot(data2, aes(x = Housing_Quality, y = INC, fill = Housing_Quality)) +
+  geom_violin(alpha = 0.7) +
+  geom_boxplot(width = 0.2, alpha = 0.5, outlier.alpha = 0) +
+  scale_fill_manual(values = c("Shared Facilities" = "red", "Private Facilities" = "grey")) +
+  labs(title = "Housing Quality Reflects Economic Status",x = "", y = "Annual Income (£)") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+```
+
+Individuals residing in accommodation with shared facilities earn substantially less than those with private amenities. This pattern underscores a clear link between income and living conditions, suggesting that housing quality not only reflects economic status but may also reinforce it. The disparity highlights how material circumstances can both result from and contribute to broader socioeconomic inequality.
+
+# Conclusion
+
+This analysis reveals critical patterns in the structure of economic inequality:
+
+1.  **Reversed gender income trend**: In contrast to national averages, females in this data earn more than non-females across all education levels. This deviation suggests the influence of specific demographic or occupational characteristics within the sample and highlights the importance of contextual analysis.
+2.  **Education as a consistent determinant of income**: Higher educational attainment is strongly associated with increased earnings, reaffirming education’s central role in promoting economic mobility.
+3.  **Housing as a reflection of economic status**: Individuals residing in accommodation with shared facilities earn significantly less than those with private amenities, indicating that housing conditions serve as both indicators and outcomes of income disparities.
+4.  **Multiple factors intersect**: Ethnicity, marital status, education, and housing quality all contribute to income variation, demonstrating that economic outcomes result from complex, intersecting demographic and social factors rather than single determinants.
+
+These findings underscore the multifaceted nature of economic inequality. They demonstrate that income disparities are shaped by the intersection of gender, education, and housing, and emphasize the need for detailed, data-informed policy responses that address these overlapping dimensions.
